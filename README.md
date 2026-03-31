@@ -13,5 +13,5 @@ this app is intended for individuals who are interested in fashion and want to m
 - users can log outfits they wear each day
 - the app tracks how often each outfit is worn
 - the app identifies outfits that are worn too frequently
-- the app suggest alternative outfits that have been worn less often
+- the app suggests alternative outfits that have been worn less often
 - users can view their outfit history over time
