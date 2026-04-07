@@ -98,7 +98,7 @@ category = st.selectbox(
 )
 
 wear_count = st.slider(
-    "How many times have you worn this outfit recently?",
+    "How many times have you worn this outfit in the last 3 weeks?",
     1, 10, 3
 )
 
