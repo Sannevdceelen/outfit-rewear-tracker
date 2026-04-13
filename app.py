@@ -1,11 +1,12 @@
-# outfit_rewear_tracker/app.py
+# Outfit Rewear Tracker
+# A Streamlit app to help you track what you wear, upload outfit photos, manage your closet, and get outfit suggestions based on items you already own.
+
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import date
 
-# -----------------------------
-# Page settings
-# -----------------------------
-st.set_page_config(page_title="Outfit Rewear Tracker", page_icon="👗", layout="centered")
+st.set_page_config(page_title="Outfit Rewear Tracker", layout="wide")
 
 # -----------------------------
 # Custom styling
@@ -14,62 +15,28 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #F3E8FF;
+        background-color: #f3ecfb;
     }
 
     .main-title {
-        text-align: center;
-        color: #5B3B73;
+        color: #7b4bb7;
         font-size: 42px;
-        font-weight: 800;
+        font-weight: 700;
         margin-bottom: 5px;
     }
 
     .subtitle {
-        text-align: center;
-        color: #6E4B87;
+        color: #5f5f5f;
         font-size: 18px;
-        margin-bottom: 25px;
-    }
-
-    .logo-wrap {
-        display: flex;
-        justify-content: center;
-        margin-top: 10px;
-        margin-bottom: 10px;
-    }
-
-    .logo-circle {
-        width: 110px;
-        height: 110px;
-        border-radius: 50%;
-        background-color: #E6D6F3;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 48px;
-        box-shadow: 0 4px 12px rgba(91, 59, 115, 0.18);
-        border: 3px solid white;
+        margin-bottom: 20px;
     }
 
     .section-box {
-        background-color: rgba(255, 255, 255, 0.55);
-        padding: 18px;
+        background-color: white;
+        padding: 20px;
         border-radius: 16px;
-        margin-bottom: 18px;
-    }
-
-    h2, h3 {
-        color: #5B3B73 !important;
-    }
-
-    .recommendation-box {
-        background-color: #ffffff;
-        padding: 16px;
-        border-radius: 14px;
-        border-left: 6px solid #B57EDC;
-        color: #4A335A;
-        font-size: 16px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
     </style>
     """,
@@ -77,116 +44,355 @@ st.markdown(
 )
 
 # -----------------------------
-# App logo + title
+# Session state
 # -----------------------------
-st.markdown('<div class="logo-wrap"><div class="logo-circle">👗</div></div>', unsafe_allow_html=True)
-st.markdown('<div class="main-title">Outfit Rewear Tracker</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="subtitle">Track how often you rewear outfits and get fresh styling ideas.</div>',
-    unsafe_allow_html=True
+if "closet" not in st.session_state:
+    st.session_state.closet = []
+
+if "outfit_log" not in st.session_state:
+    st.session_state.outfit_log = []
+
+# -----------------------------
+# Helper functions
+# -----------------------------
+def add_closet_item(name, category, color, season, image):
+    st.session_state.closet.append(
+        {
+            "name": name,
+            "category": category,
+            "color": color,
+            "season": season,
+            "image": image,
+        }
+    )
+
+def delete_closet_item(item_name):
+    st.session_state.closet = [
+        item for item in st.session_state.closet if item["name"] != item_name
+    ]
+
+def log_outfit(log_date, top, bottom, shoes, occasion, rating, image):
+    outfit_name = f"{top} + {bottom} + {shoes}"
+    st.session_state.outfit_log.append(
+        {
+            "date": log_date,
+            "outfit_name": outfit_name,
+            "top": top,
+            "bottom": bottom,
+            "shoes": shoes,
+            "occasion": occasion,
+            "rating": rating,
+            "image": image,
+        }
+    )
+
+def get_outfit_dataframe():
+    if not st.session_state.outfit_log:
+        return pd.DataFrame(
+            columns=["date", "outfit_name", "top", "bottom", "shoes", "occasion", "rating", "image"]
+        )
+    df = pd.DataFrame(st.session_state.outfit_log)
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values("date", ascending=False)
+
+def get_closet_dataframe():
+    if not st.session_state.closet:
+        return pd.DataFrame(columns=["name", "category", "color", "season", "image"])
+    return pd.DataFrame(st.session_state.closet)
+
+def recommend_outfits(season_filter=None):
+    closet_df = get_closet_dataframe()
+    outfit_df = get_outfit_dataframe()
+
+    if closet_df.empty:
+        return []
+
+    tops = closet_df[closet_df["category"] == "Top"]["name"].tolist()
+    bottoms = closet_df[closet_df["category"] == "Bottom"]["name"].tolist()
+    shoes = closet_df[closet_df["category"] == "Shoes"]["name"].tolist()
+
+    if season_filter:
+        filtered_tops = closet_df[
+            (closet_df["category"] == "Top") &
+            ((closet_df["season"] == season_filter) | (closet_df["season"] == "All"))
+        ]["name"].tolist()
+
+        filtered_bottoms = closet_df[
+            (closet_df["category"] == "Bottom") &
+            ((closet_df["season"] == season_filter) | (closet_df["season"] == "All"))
+        ]["name"].tolist()
+
+        filtered_shoes = closet_df[
+            (closet_df["category"] == "Shoes") &
+            ((closet_df["season"] == season_filter) | (closet_df["season"] == "All"))
+        ]["name"].tolist()
+
+        if filtered_tops:
+            tops = filtered_tops
+        if filtered_bottoms:
+            bottoms = filtered_bottoms
+        if filtered_shoes:
+            shoes = filtered_shoes
+
+    suggestions = []
+
+    for top in tops[:6]:
+        for bottom in bottoms[:6]:
+            for shoe in shoes[:6]:
+                combo = f"{top} + {bottom} + {shoe}"
+                times_worn = 0
+                if not outfit_df.empty:
+                    times_worn = (outfit_df["outfit_name"] == combo).sum()
+
+                suggestions.append(
+                    {
+                        "outfit": combo,
+                        "times_worn": times_worn
+                    }
+                )
+
+    suggestions = sorted(suggestions, key=lambda x: x["times_worn"])
+    return suggestions[:5]
+
+# -----------------------------
+# Header
+# -----------------------------
+col1, col2 = st.columns([1, 6])
+
+with col1:
+    try:
+        st.image("dress_logo.png", width=110)
+    except Exception:
+        st.write("👗")
+
+with col2:
+    st.markdown('<div class="main-title">Outfit Rewear Tracker</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="subtitle">Track your outfits, upload your closet, and get recommendations from clothes you already own.</div>',
+        unsafe_allow_html=True
+    )
+
+# -----------------------------
+# Sidebar
+# -----------------------------
+page = st.sidebar.radio(
+    "Navigation",
+    [
+        "Home",
+        "Add Closet Item",
+        "Closet Overview",
+        "Log Daily Outfit",
+        "Outfit History",
+        "Recommendations"
+    ]
 )
 
 # -----------------------------
-# Inputs
+# Home
 # -----------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Enter Your Outfit Details")
-
-category = st.selectbox(
-    "Choose an outfit category:",
-    ["Casual", "School", "Work", "Going Out"]
-)
-
-wear_count = st.slider(
-    "How many times have you worn this outfit in the last 3 weeks?",
-    1, 10, 3
-)
-
-favorite_item = st.text_input(
-    "What item do you wear the most?",
-    "Black jeans"
-)
-
-colors = st.multiselect(
-    "Choose the colors in your outfit:",
-    ["Black", "White", "Blue", "Pink", "Beige", "Gray", "Green", "Purple"],
-    default=["Black"]
-)
-
-show_recommendation = st.checkbox("Show styling recommendation", value=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# -----------------------------
-# Summary output
-# -----------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Your Outfit Summary")
-st.write(f"**Category:** {category}")
-st.write(f"**Most-worn item:** {favorite_item}")
-st.write(f"**Wear count:** {wear_count}")
-st.write(f"**Colors:** {', '.join(colors) if colors else 'No colors selected'}")
-st.markdown('</div>', unsafe_allow_html=True)
-
-# -----------------------------
-# Feedback based on wear count
-# -----------------------------
-if wear_count >= 7:
-    st.warning("You wear this outfit a lot. Try switching one main piece to create a fresh look.")
-elif wear_count >= 4:
-    st.info("You wear this outfit fairly often. Small changes can help it feel new again.")
-else:
-    st.success("Nice variety — you are rotating your outfits well.")
-
-# -----------------------------
-# Recommendation logic
-# -----------------------------
-recommendation = ""
-
-if category == "Casual":
-    recommendation = "Try pairing your usual item with a different top, a light jacket, and sneakers for an easy refreshed casual look."
-elif category == "School":
-    recommendation = "Try layering with a cardigan or hoodie and switching to different shoes or accessories to change the vibe."
-elif category == "Work":
-    recommendation = "Try combining your outfit with trousers, a neutral blouse, and one polished accessory like a tote or loafers."
-elif category == "Going Out":
-    recommendation = "Try a new color combination or add one statement piece, like boots, jewelry, or a dressier jacket."
-
-if "Black" in colors and len(colors) == 1:
-    recommendation += " Since you mostly wear black, try adding one lighter accent color for contrast."
-
-if wear_count >= 7:
-    recommendation += " Because you wear this often, changing either the top, shoes, or outer layer would make the biggest difference."
-
-# -----------------------------
-# Recommendation output
-# -----------------------------
-if show_recommendation:
+if page == "Home":
     st.markdown('<div class="section-box">', unsafe_allow_html=True)
-    st.subheader("Recommendation")
-    st.markdown(f'<div class="recommendation-box">{recommendation}</div>', unsafe_allow_html=True)
+    st.header("Welcome to the app")
+    st.write(
+        """
+        This app helps you track what you wear and make better use of your closet.
+
+        **Where to find everything:**
+        - **Add Closet Item**: add clothes, shoes, and upload pictures of them
+        - **Closet Overview**: see all your closet items and delete items
+        - **Log Daily Outfit**: record what you wore and upload a picture of your outfit
+        - **Outfit History**: see how many times you wore outfits and on which dates
+        - **Recommendations**: get outfit ideas from your own closet, especially items you wear less often
+        """
+    )
+
+    st.subheader("Main features")
+    st.write(
+        """
+        - Upload closet items with pictures
+        - Upload daily outfit pictures
+        - Track wear count
+        - Track when you wore each outfit
+        - Get outfit recommendations from your own closet
+        """
+    )
     st.markdown('</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# Outfit ideas table
+# Add Closet Item
 # -----------------------------
-st.markdown('<div class="section-box">', unsafe_allow_html=True)
-st.subheader("Suggested Outfit Ideas")
+elif page == "Add Closet Item":
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.header("Add an item to your closet")
 
-data = pd.DataFrame({
-    "Outfit Idea": [
-        "Black jeans + white top + denim jacket",
-        "Beige pants + sweater + boots",
-        "Skirt + blouse + flats",
-        "Wide-leg pants + blazer + loafers"
-    ],
-    "Style": ["Casual", "School", "Going Out", "Work"]
-})
+    with st.form("closet_form"):
+        item_name = st.text_input("Item name")
+        category = st.selectbox("Category", ["Top", "Bottom", "Shoes", "Jacket", "Accessory"])
+        color = st.text_input("Color")
+        season = st.selectbox("Season", ["All", "Spring", "Summer", "Fall", "Winter"])
+        item_image = st.file_uploader("Upload a picture of the item", type=["png", "jpg", "jpeg"])
+        submit_item = st.form_submit_button("Add item")
 
-filtered_data = data[data["Style"] == category]
-st.dataframe(filtered_data, use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+    if submit_item:
+        if item_name.strip():
+            add_closet_item(item_name, category, color, season, item_image)
+            st.success(f"{item_name} added to your closet.")
+        else:
+            st.warning("Please enter an item name.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # -----------------------------
-# Footer
+# Closet Overview
 # -----------------------------
-st.caption("Fashion tip: Rewearing is great — styling the same pieces in new ways keeps your wardrobe feeling fresh.")
+elif page == "Closet Overview":
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.header("Your closet")
+
+    closet_df = get_closet_dataframe()
+
+    if closet_df.empty:
+        st.info("Your closet is empty. Add some items first.")
+    else:
+        st.dataframe(
+            closet_df[["name", "category", "color", "season"]],
+            use_container_width=True
+        )
+
+        st.subheader("Delete an item")
+        item_to_delete = st.selectbox("Select an item to delete", closet_df["name"].tolist())
+        if st.button("Delete selected item"):
+            delete_closet_item(item_to_delete)
+            st.success(f"{item_to_delete} was deleted.")
+            st.rerun()
+
+        st.subheader("Closet items")
+        cols = st.columns(3)
+
+        for i, item in enumerate(st.session_state.closet):
+            with cols[i % 3]:
+                st.markdown(f"**{item['name']}**")
+                st.write(f"Category: {item['category']}")
+                st.write(f"Color: {item['color']}")
+                st.write(f"Season: {item['season']}")
+                if item["image"] is not None:
+                    st.image(item["image"], use_container_width=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# Log Daily Outfit
+# -----------------------------
+elif page == "Log Daily Outfit":
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.header("Log your outfit of the day")
+
+    closet_df = get_closet_dataframe()
+
+    tops = closet_df[closet_df["category"] == "Top"]["name"].tolist()
+    bottoms = closet_df[closet_df["category"] == "Bottom"]["name"].tolist()
+    shoes_list = closet_df[closet_df["category"] == "Shoes"]["name"].tolist()
+
+    if not tops or not bottoms or not shoes_list:
+        st.warning("Please add at least one top, one bottom, and one pair of shoes first.")
+    else:
+        with st.form("outfit_form"):
+            outfit_date = st.date_input("Date", value=date.today())
+            top_choice = st.selectbox("Top", tops)
+            bottom_choice = st.selectbox("Bottom", bottoms)
+            shoes_choice = st.selectbox("Shoes", shoes_list)
+            occasion = st.selectbox("Occasion", ["Casual", "School", "Work", "Party", "Formal"])
+            rating = st.slider("How much did you like this outfit?", 1, 10, 7)
+            outfit_image = st.file_uploader("Upload a picture of today's outfit", type=["png", "jpg", "jpeg"])
+            submit_outfit = st.form_submit_button("Save outfit")
+
+        if submit_outfit:
+            log_outfit(outfit_date, top_choice, bottom_choice, shoes_choice, occasion, rating, outfit_image)
+            st.success("Outfit logged successfully.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# Outfit History
+# -----------------------------
+elif page == "Outfit History":
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.header("Outfit history")
+
+    df = get_outfit_dataframe()
+
+    if df.empty:
+        st.info("No outfits logged yet.")
+    else:
+        st.subheader("All logged outfits")
+        show_df = df.copy()
+        show_df["date"] = show_df["date"].dt.strftime("%Y-%m-%d")
+        st.dataframe(
+            show_df[["date", "outfit_name", "occasion", "rating"]],
+            use_container_width=True
+        )
+
+        st.subheader("How many times each outfit was worn")
+        wear_counts = df["outfit_name"].value_counts().reset_index()
+        wear_counts.columns = ["Outfit", "Times Worn"]
+        st.dataframe(wear_counts, use_container_width=True)
+
+        chart_df = wear_counts.copy()
+        chart_df["Display Outfit"] = chart_df["Outfit"].apply(
+            lambda x: x if len(x) <= 45 else x[:45] + "..."
+        )
+
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.barh(chart_df["Display Outfit"], chart_df["Times Worn"])
+        ax.set_xlabel("Times Worn")
+        ax.set_ylabel("Outfit")
+        ax.set_title("How many times each outfit was worn")
+        ax.invert_yaxis()
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        st.subheader("When did I wear each outfit?")
+        selected_outfit = st.selectbox(
+            "Select an outfit to view wear dates",
+            df["outfit_name"].unique()
+        )
+
+        selected_dates = df[df["outfit_name"] == selected_outfit][["date", "occasion", "rating"]].sort_values("date")
+        selected_dates["date"] = selected_dates["date"].dt.strftime("%Y-%m-%d")
+        st.dataframe(selected_dates, use_container_width=True)
+
+        st.subheader("Outfit photos")
+        for _, row in df.iterrows():
+            st.markdown(f"**{row['outfit_name']}** on {row['date'].strftime('%Y-%m-%d')}")
+            if row["image"] is not None:
+                st.image(row["image"], width=250)
+            else:
+                st.write("No photo uploaded.")
+            st.divider()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# Recommendations
+# -----------------------------
+elif page == "Recommendations":
+    st.markdown('<div class="section-box">', unsafe_allow_html=True)
+    st.header("Outfit recommendations")
+
+    season_choice = st.selectbox("Choose season", ["All", "Spring", "Summer", "Fall", "Winter"])
+    season_filter = None if season_choice == "All" else season_choice
+
+    suggestions = recommend_outfits(season_filter=season_filter)
+
+    if not suggestions:
+        st.info("Add more closet items first to get recommendations.")
+    else:
+        st.subheader("Recommended outfits you have worn the least")
+        for suggestion in suggestions:
+            st.markdown(f"**{suggestion['outfit']}**")
+            st.write(f"Times worn: {suggestion['times_worn']}")
+            st.write("This recommendation is based on items from your own closet and lower wear frequency.")
+            st.divider()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    
