@@ -1,17 +1,52 @@
-# outfit-rewear-tracker
+# Outfit Rewear Tracker
 
-## Students name
+## Student Name
+
 Sanne van der Ceelen
 
-## App description
-the outfit rewear tracker is a streamlit application that helps users track their outfits over time. this allows the users to identify which outfits they wore when and which outfits they wear frequently. the users can use these insides to create more variety in their wardrobe, the app helps with this by suggesting alternative outfits.
+---
 
-## Intended users
-this app is intended for individuals who are interested in fashion and want to manage their wardrobe. It is especially useful for students and young professionals who want to create more outfit variety without buying new clothes
+## App Description
 
-## Planned features
-- users can log outfits they wear each day
-- the app tracks how often each outfit is worn
-- the app identifies outfits that are worn too frequently
-- the app suggests alternative outfits that have been worn less often
-- users can view their outfit history over time
+The Outfit Rewear Tracker is a Streamlit application that helps users track how often they wear outfits and encourages more variety in their wardrobe. The app provides feedback and suggestions based on how frequently outfits are worn and offers alternative outfit ideas.
+
+---
+
+## Current Features (Assignment 2)
+
+* Select an outfit category (Casual, School, Work, Going Out)
+* Enter your most-worn clothing item
+* Adjust outfit wear frequency using a slider
+* Select outfit colors using a multiselect widget
+* View a summary of your outfit inputs
+* Receive dynamic feedback based on how often you wear an outfit
+* Get personalized outfit recommendations based on your selections
+* View a table of suggested outfit ideas filtered by category
+* Styled interface with a pastel lilac theme and logo
+
+---
+
+## How the App Works
+
+The app takes user input through interactive widgets and dynamically updates outputs:
+
+* Displays feedback messages depending on how frequently an outfit is worn
+* Generates outfit recommendations based on category, colors, and usage
+* Filters and displays outfit suggestions based on selected category
+
+---
+
+## Intended Users
+
+This app is intended for individuals interested in fashion who want to better manage their wardrobe. It is especially useful for students and young professionals who want to create more outfit variety without purchasing new clothing.
+
+---
+
+## Planned Features (Final Version)
+
+* Users can log outfits they wear each day
+* Track outfit usage over time
+* Store outfit history
+* Provide more advanced and personalized recommendations
+* Add charts to visualize outfit usage
+* Allow users to upload outfit images
