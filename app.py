@@ -5,6 +5,12 @@
 # A Streamlit app to help you track what you wear, upload outfit photos,
 # manage your closet, and get outfit suggestions based on items you already own.
 
+from supabase import create_client
+
+SUPABASE_URL = https://iwvzmsinptygcpbohyrs.supabase.co
+SUPABASE_KEY = sb_publishable_zbtqpe6WZ-lIr1FVLXgo_A_-m3h-MqI
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 import os
 import uuid
 from datetime import date
