@@ -68,14 +68,17 @@ def upload_image_to_supabase(uploaded_file):
     file_extension = uploaded_file.name.split(".")[-1].lower()
     file_name = f"{uuid.uuid4().hex}.{file_extension}"
     file_path = f"uploads/{file_name}"
-
     file_bytes = uploaded_file.getvalue()
 
-    supabase.storage.from_("images").upload(
-        path=file_path,
-        file=file_bytes,
-        file_options={"content-type": uploaded_file.type}
-    )
+    try:
+        supabase.storage.from_("images").upload(
+            file_path,
+            file_bytes,
+            {"content-type": uploaded_file.type}
+        )
+    except Exception as e:
+        st.error(f"Image upload failed: {e}")
+        return ""
 
     public_url = supabase.storage.from_("images").get_public_url(file_path)
     return public_url
