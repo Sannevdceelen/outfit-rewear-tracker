@@ -1,12 +1,30 @@
 # Outfit Rewear Tracker
 # A Streamlit app to help you track what you wear, upload outfit photos, manage your closet, and get outfit suggestions based on items you already own.
 
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
+# Outfit Rewear Tracker
+# A Streamlit app to help you track what you wear, upload outfit photos,
+# manage your closet, and get outfit suggestions based on items you already own.
+
+import os
+import uuid
 from datetime import date
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
+
 st.set_page_config(page_title="Outfit Rewear Tracker", layout="wide")
+
+# -----------------------------
+# File paths
+# -----------------------------
+CLOSET_CSV = "closet.csv"
+OUTFIT_LOG_CSV = "outfit_log.csv"
+CLOSET_IMAGE_FOLDER = "closet_images"
+OUTFIT_IMAGE_FOLDER = "outfit_images"
+
+os.makedirs(CLOSET_IMAGE_FOLDER, exist_ok=True)
+os.makedirs(OUTFIT_IMAGE_FOLDER, exist_ok=True)
 
 # -----------------------------
 # Custom styling
@@ -44,6 +62,51 @@ st.markdown(
 )
 
 # -----------------------------
+# CSV helpers
+# -----------------------------
+def load_csv_data():
+    """Load closet and outfit log from CSV files into session state."""
+    if os.path.exists(CLOSET_CSV):
+        closet_df = pd.read_csv(CLOSET_CSV)
+        st.session_state.closet = closet_df.fillna("").to_dict(orient="records")
+    else:
+        st.session_state.closet = []
+
+    if os.path.exists(OUTFIT_LOG_CSV):
+        outfit_df = pd.read_csv(OUTFIT_LOG_CSV)
+        st.session_state.outfit_log = outfit_df.fillna("").to_dict(orient="records")
+    else:
+        st.session_state.outfit_log = []
+
+
+def save_closet_to_csv():
+    """Save closet session state to CSV."""
+    closet_df = pd.DataFrame(st.session_state.closet)
+    closet_df.to_csv(CLOSET_CSV, index=False)
+
+
+def save_outfit_log_to_csv():
+    """Save outfit log session state to CSV."""
+    outfit_df = pd.DataFrame(st.session_state.outfit_log)
+    outfit_df.to_csv(OUTFIT_LOG_CSV, index=False)
+
+
+def save_uploaded_file(uploaded_file, folder_name):
+    """Save an uploaded file to disk and return the saved path."""
+    if uploaded_file is None:
+        return ""
+
+    file_extension = os.path.splitext(uploaded_file.name)[1]
+    unique_filename = f"{uuid.uuid4().hex}{file_extension}"
+    file_path = os.path.join(folder_name, unique_filename)
+
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    return file_path
+
+
+# -----------------------------
 # Session state
 # -----------------------------
 if "closet" not in st.session_state:
@@ -52,53 +115,85 @@ if "closet" not in st.session_state:
 if "outfit_log" not in st.session_state:
     st.session_state.outfit_log = []
 
+if "data_loaded" not in st.session_state:
+    load_csv_data()
+    st.session_state.data_loaded = True
+
 # -----------------------------
 # Helper functions
 # -----------------------------
 def add_closet_item(name, category, color, season, image):
+    image_path = save_uploaded_file(image, CLOSET_IMAGE_FOLDER)
+
     st.session_state.closet.append(
         {
             "name": name,
             "category": category,
             "color": color,
             "season": season,
-            "image": image,
+            "image": image_path,
         }
     )
+    save_closet_to_csv()
+
 
 def delete_closet_item(item_name):
+    item_to_remove = None
+    for item in st.session_state.closet:
+        if item["name"] == item_name:
+            item_to_remove = item
+            break
+
+    if item_to_remove is not None:
+        image_path = item_to_remove.get("image", "")
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except OSError:
+                pass
+
     st.session_state.closet = [
         item for item in st.session_state.closet if item["name"] != item_name
     ]
+    save_closet_to_csv()
+
 
 def log_outfit(log_date, top, bottom, shoes, occasion, rating, image):
+    image_path = save_uploaded_file(image, OUTFIT_IMAGE_FOLDER)
     outfit_name = f"{top} + {bottom} + {shoes}"
+
     st.session_state.outfit_log.append(
         {
-            "date": log_date,
+            "date": str(log_date),
             "outfit_name": outfit_name,
             "top": top,
             "bottom": bottom,
             "shoes": shoes,
             "occasion": occasion,
             "rating": rating,
-            "image": image,
+            "image": image_path,
         }
     )
+    save_outfit_log_to_csv()
+
 
 def get_outfit_dataframe():
     if not st.session_state.outfit_log:
         return pd.DataFrame(
             columns=["date", "outfit_name", "top", "bottom", "shoes", "occasion", "rating", "image"]
         )
+
     df = pd.DataFrame(st.session_state.outfit_log)
     df["date"] = pd.to_datetime(df["date"])
     return df.sort_values("date", ascending=False)
 
+
 def get_closet_dataframe():
     if not st.session_state.closet:
         return pd.DataFrame(columns=["name", "category", "color", "season", "image"])
+
     return pd.DataFrame(st.session_state.closet)
+
 
 def recommend_outfits(season_filter=None):
     closet_df = get_closet_dataframe()
@@ -275,7 +370,7 @@ elif page == "Closet Overview":
                 st.write(f"Category: {item['category']}")
                 st.write(f"Color: {item['color']}")
                 st.write(f"Season: {item['season']}")
-                if item["image"] is not None:
+                if item.get("image", ""):
                     st.image(item["image"], use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -347,6 +442,7 @@ elif page == "Outfit History":
         ax.set_xlabel("Times Worn")
         ax.set_ylabel("Outfit")
         ax.set_title("How many times each outfit was worn")
+        ax.set_xticks(range(0, int(chart_df["Times Worn"].max()) + 1))
         ax.invert_yaxis()
         plt.tight_layout()
         st.pyplot(fig)
@@ -364,7 +460,7 @@ elif page == "Outfit History":
         st.subheader("Outfit photos")
         for _, row in df.iterrows():
             st.markdown(f"**{row['outfit_name']}** on {row['date'].strftime('%Y-%m-%d')}")
-            if row["image"] is not None:
+            if row.get("image", ""):
                 st.image(row["image"], width=250)
             else:
                 st.write("No photo uploaded.")
@@ -395,4 +491,3 @@ elif page == "Recommendations":
             st.divider()
 
     st.markdown('</div>', unsafe_allow_html=True)
-    
