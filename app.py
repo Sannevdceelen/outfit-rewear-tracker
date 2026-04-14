@@ -5,32 +5,23 @@
 # A Streamlit app to help you track what you wear, upload outfit photos,
 # manage your closet, and get outfit suggestions based on items you already own.
 
-from supabase import create_client
-
-SUPABASE_URL = "https://iwvzmsinptygcpbohyrs.supabase.co"
-SUPABASE_KEY = "sb_publishable_zbtqpe6WZ-lIr1FVLXgo_A_-m3h-MqI"
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-import os
 import uuid
 from datetime import date
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+from supabase import create_client
+
+# -----------------------------
+# Supabase connection
+# -----------------------------
+SUPABASE_URL = "https://iwvzmsinptygcpbohyrs.supabase.co"
+SUPABASE_KEY = "sb_publishable_zbtqpe6WZ-lIr1FVLXgo_A_-m3h-MqI"
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="Outfit Rewear Tracker", layout="wide")
-
-# -----------------------------
-# File paths
-# -----------------------------
-CLOSET_CSV = "closet.csv"
-OUTFIT_LOG_CSV = "outfit_log.csv"
-CLOSET_IMAGE_FOLDER = "closet_images"
-OUTFIT_IMAGE_FOLDER = "outfit_images"
-
-os.makedirs(CLOSET_IMAGE_FOLDER, exist_ok=True)
-os.makedirs(OUTFIT_IMAGE_FOLDER, exist_ok=True)
 
 # -----------------------------
 # Custom styling
@@ -68,107 +59,51 @@ st.markdown(
 )
 
 # -----------------------------
-# CSV helpers
+# Helper functions
 # -----------------------------
-def load_csv_data():
-    """Load closet and outfit log from CSV files into session state."""
-    if os.path.exists(CLOSET_CSV):
-        closet_df = pd.read_csv(CLOSET_CSV)
-        st.session_state.closet = closet_df.fillna("").to_dict(orient="records")
-    else:
-        st.session_state.closet = []
-
-    if os.path.exists(OUTFIT_LOG_CSV):
-        outfit_df = pd.read_csv(OUTFIT_LOG_CSV)
-        st.session_state.outfit_log = outfit_df.fillna("").to_dict(orient="records")
-    else:
-        st.session_state.outfit_log = []
-
-
-def save_closet_to_csv():
-    """Save closet session state to CSV."""
-    closet_df = pd.DataFrame(st.session_state.closet)
-    closet_df.to_csv(CLOSET_CSV, index=False)
-
-
-def save_outfit_log_to_csv():
-    """Save outfit log session state to CSV."""
-    outfit_df = pd.DataFrame(st.session_state.outfit_log)
-    outfit_df.to_csv(OUTFIT_LOG_CSV, index=False)
-
-
-def save_uploaded_file(uploaded_file, folder_name):
-    """Save an uploaded file to disk and return the saved path."""
+def upload_image_to_supabase(uploaded_file):
     if uploaded_file is None:
         return ""
 
-    file_extension = os.path.splitext(uploaded_file.name)[1]
-    unique_filename = f"{uuid.uuid4().hex}{file_extension}"
-    file_path = os.path.join(folder_name, unique_filename)
+    file_extension = uploaded_file.name.split(".")[-1].lower()
+    file_name = f"{uuid.uuid4().hex}.{file_extension}"
+    file_path = f"uploads/{file_name}"
 
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    file_bytes = uploaded_file.getvalue()
 
-    return file_path
+    supabase.storage.from_("images").upload(
+        path=file_path,
+        file=file_bytes,
+        file_options={"content-type": uploaded_file.type}
+    )
+
+    public_url = supabase.storage.from_("images").get_public_url(file_path)
+    return public_url
 
 
-# -----------------------------
-# Session state
-# -----------------------------
-if "closet" not in st.session_state:
-    st.session_state.closet = []
-
-if "outfit_log" not in st.session_state:
-    st.session_state.outfit_log = []
-
-if "data_loaded" not in st.session_state:
-    load_csv_data()
-    st.session_state.data_loaded = True
-
-# -----------------------------
-# Helper functions
-# -----------------------------
 def add_closet_item(name, category, color, season, image):
-    image_path = save_uploaded_file(image, CLOSET_IMAGE_FOLDER)
+    image_url = upload_image_to_supabase(image)
 
-    st.session_state.closet.append(
+    supabase.table("closet").insert(
         {
             "name": name,
             "category": category,
             "color": color,
             "season": season,
-            "image": image_path,
+            "image_url": image_url,
         }
-    )
-    save_closet_to_csv()
+    ).execute()
 
 
-def delete_closet_item(item_name):
-    item_to_remove = None
-    for item in st.session_state.closet:
-        if item["name"] == item_name:
-            item_to_remove = item
-            break
-
-    if item_to_remove is not None:
-        image_path = item_to_remove.get("image", "")
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-            except OSError:
-                pass
-
-    st.session_state.closet = [
-        item for item in st.session_state.closet if item["name"] != item_name
-    ]
-    save_closet_to_csv()
+def delete_closet_item(item_id):
+    supabase.table("closet").delete().eq("id", item_id).execute()
 
 
 def log_outfit(log_date, top, bottom, shoes, occasion, rating, image):
-    image_path = save_uploaded_file(image, OUTFIT_IMAGE_FOLDER)
+    image_url = upload_image_to_supabase(image)
     outfit_name = f"{top} + {bottom} + {shoes}"
 
-    st.session_state.outfit_log.append(
+    supabase.table("outfits").insert(
         {
             "date": str(log_date),
             "outfit_name": outfit_name,
@@ -177,28 +112,32 @@ def log_outfit(log_date, top, bottom, shoes, occasion, rating, image):
             "shoes": shoes,
             "occasion": occasion,
             "rating": rating,
-            "image": image_path,
+            "image_url": image_url,
         }
-    )
-    save_outfit_log_to_csv()
-
-
-def get_outfit_dataframe():
-    if not st.session_state.outfit_log:
-        return pd.DataFrame(
-            columns=["date", "outfit_name", "top", "bottom", "shoes", "occasion", "rating", "image"]
-        )
-
-    df = pd.DataFrame(st.session_state.outfit_log)
-    df["date"] = pd.to_datetime(df["date"])
-    return df.sort_values("date", ascending=False)
+    ).execute()
 
 
 def get_closet_dataframe():
-    if not st.session_state.closet:
-        return pd.DataFrame(columns=["name", "category", "color", "season", "image"])
+    response = supabase.table("closet").select("*").order("id", desc=False).execute()
+    data = response.data if response.data else []
+    return pd.DataFrame(data)
 
-    return pd.DataFrame(st.session_state.closet)
+
+def get_outfit_dataframe():
+    response = supabase.table("outfits").select("*").order("date", desc=True).execute()
+    data = response.data if response.data else []
+
+    if not data:
+        return pd.DataFrame(
+            columns=[
+                "id", "date", "outfit_name", "top", "bottom",
+                "shoes", "occasion", "rating", "image_url"
+            ]
+        )
+
+    df = pd.DataFrame(data)
+    df["date"] = pd.to_datetime(df["date"])
+    return df.sort_values("date", ascending=False)
 
 
 def recommend_outfits(season_filter=None):
@@ -248,7 +187,7 @@ def recommend_outfits(season_filter=None):
                 suggestions.append(
                     {
                         "outfit": combo,
-                        "times_worn": times_worn
+                        "times_worn": int(times_worn)
                     }
                 )
 
@@ -338,6 +277,7 @@ elif page == "Add Closet Item":
         if item_name.strip():
             add_closet_item(item_name, category, color, season, item_image)
             st.success(f"{item_name} added to your closet.")
+            st.rerun()
         else:
             st.warning("Please enter an item name.")
 
@@ -361,23 +301,30 @@ elif page == "Closet Overview":
         )
 
         st.subheader("Delete an item")
-        item_to_delete = st.selectbox("Select an item to delete", closet_df["name"].tolist())
+        delete_options = {
+            f"{row['name']} ({row['category']})": row["id"]
+            for _, row in closet_df.iterrows()
+        }
+        selected_label = st.selectbox("Select an item to delete", list(delete_options.keys()))
+
         if st.button("Delete selected item"):
-            delete_closet_item(item_to_delete)
-            st.success(f"{item_to_delete} was deleted.")
+            delete_closet_item(delete_options[selected_label])
+            st.success(f"{selected_label} was deleted.")
             st.rerun()
 
         st.subheader("Closet items")
         cols = st.columns(3)
 
-        for i, item in enumerate(st.session_state.closet):
+        for i, item in closet_df.iterrows():
             with cols[i % 3]:
                 st.markdown(f"**{item['name']}**")
                 st.write(f"Category: {item['category']}")
                 st.write(f"Color: {item['color']}")
                 st.write(f"Season: {item['season']}")
-                if item.get("image", ""):
-                    st.image(item["image"], use_container_width=True)
+                if item.get("image_url", ""):
+                    st.image(item["image_url"], use_container_width=True)
+                else:
+                    st.write("No image uploaded.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -390,9 +337,14 @@ elif page == "Log Daily Outfit":
 
     closet_df = get_closet_dataframe()
 
-    tops = closet_df[closet_df["category"] == "Top"]["name"].tolist()
-    bottoms = closet_df[closet_df["category"] == "Bottom"]["name"].tolist()
-    shoes_list = closet_df[closet_df["category"] == "Shoes"]["name"].tolist()
+    if closet_df.empty:
+        tops = []
+        bottoms = []
+        shoes_list = []
+    else:
+        tops = closet_df[closet_df["category"] == "Top"]["name"].tolist()
+        bottoms = closet_df[closet_df["category"] == "Bottom"]["name"].tolist()
+        shoes_list = closet_df[closet_df["category"] == "Shoes"]["name"].tolist()
 
     if not tops or not bottoms or not shoes_list:
         st.warning("Please add at least one top, one bottom, and one pair of shoes first.")
@@ -410,6 +362,7 @@ elif page == "Log Daily Outfit":
         if submit_outfit:
             log_outfit(outfit_date, top_choice, bottom_choice, shoes_choice, occasion, rating, outfit_image)
             st.success("Outfit logged successfully.")
+            st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -466,8 +419,8 @@ elif page == "Outfit History":
         st.subheader("Outfit photos")
         for _, row in df.iterrows():
             st.markdown(f"**{row['outfit_name']}** on {row['date'].strftime('%Y-%m-%d')}")
-            if row.get("image", ""):
-                st.image(row["image"], width=250)
+            if row.get("image_url", ""):
+                st.image(row["image_url"], width=250)
             else:
                 st.write("No photo uploaded.")
             st.divider()
