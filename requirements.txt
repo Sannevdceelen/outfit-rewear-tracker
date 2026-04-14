@@ -1,2 +1,4 @@
 requirements:
 streamlit
+pandas
+matplotlib
